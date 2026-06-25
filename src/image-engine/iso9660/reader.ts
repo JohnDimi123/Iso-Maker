@@ -7,7 +7,7 @@
  * `info`/`extract` CLI commands.
  */
 import * as fs from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve, sep } from 'node:path';
 import { SECTOR_SIZE } from '../../shared/constants';
 import { Errors } from '../../core/errors';
 import type { FileSystemType, ImageFileEntry, ImageInfo } from '../../shared/types';
@@ -261,8 +261,18 @@ export class Iso9660Reader {
     const entries = this.listAll().filter((e) => !e.isDirectory);
     const total = entries.reduce((a, e) => a + e.size, 0);
     let done = 0;
+    const root = resolve(destDir);
     for (const e of entries) {
-      this.extractFile(e.path, join(destDir, e.path));
+      // Guard against path traversal from a maliciously crafted image
+      // ("zip-slip"): drop any empty, '.' or '..' components and any leading
+      // slash so every extracted file is confined to destDir, then verify the
+      // resolved target still lives under the destination root.
+      const rel = e.path.replace(/\\/g, '/').split('/').filter((s) => s && s !== '.' && s !== '..').join(sep);
+      const target = join(root, rel);
+      if (target !== root && !target.startsWith(root + sep)) {
+        throw Errors.io(`Refusing to extract entry outside target directory: ${e.path}`);
+      }
+      this.extractFile(e.path, target);
       done += e.size;
       onProgress?.(e.path, done, total);
     }
