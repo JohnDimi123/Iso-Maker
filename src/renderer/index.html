@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;" />
+    <title>Iso Maker</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body data-theme="dark">
+    <div id="app">
+      <aside id="sidebar">
+        <div class="brand">
+          <div class="logo">◎</div>
+          <div>
+            <div class="brand-name">Iso Maker</div>
+            <div class="brand-sub">disc imaging suite</div>
+          </div>
+        </div>
+        <nav id="modes"></nav>
+        <div class="sidebar-footer">
+          <button id="theme-toggle" class="ghost-btn" title="Toggle theme">🌓 Theme</button>
+          <div id="app-version" class="muted"></div>
+        </div>
+      </aside>
+
+      <main id="main">
+        <header id="header">
+          <div>
+            <h1 id="mode-title">Discovery</h1>
+            <p id="mode-desc" class="muted"></p>
+          </div>
+        </header>
+
+        <section id="content"></section>
+
+        <section id="progress-area">
+          <div class="progress-row">
+            <span id="progress-phase" class="badge">idle</span>
+            <div class="progress-track"><div id="progress-fill"></div></div>
+            <span id="progress-pct" class="mono">0%</span>
+          </div>
+          <div class="progress-meta">
+            <span id="progress-speed" class="mono">0.00 MB/s</span>
+            <span id="progress-eta" class="mono">ETA --:--</span>
+            <span id="progress-buffer" class="mono">buffer --%</span>
+            <canvas id="speed-graph" width="320" height="44"></canvas>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <section id="console">
+      <div class="console-head">
+        <span>Operation log</span>
+        <button id="clear-log" class="ghost-btn">Clear</button>
+      </div>
+      <div id="log-list"></div>
+    </section>
+
+    <script src="renderer.js"></script>
+  </body>
+</html>

@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    env:
+      # The GUI binary isn't needed to typecheck, bundle or run engine tests.
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Build
+        run: npm run build
+      - name: Test (ISO round-trip + verify)
+        run: npm test
+      - name: Cross-validate ISO with pycdlib
+        run: |
+          python3 -m pip install --quiet pycdlib
+          node dist/cli/index.js build -o /tmp/ci.iso --label CI_DISC --boot package.json --boot-emul none src
+          python3 - <<'PY'
+          import pycdlib
+          iso = pycdlib.PyCdlib(); iso.open('/tmp/ci.iso')
+          assert iso.has_joliet(), 'Joliet missing'
+          assert iso.eltorito_boot_catalog is not None, 'El Torito missing'
+          print('pycdlib cross-validation OK')
+          iso.close()
+          PY

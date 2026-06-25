@@ -1,0 +1,87 @@
+{
+  "name": "iso-maker",
+  "version": "0.1.0",
+  "description": "Iso Maker — a modern, open-source, ImgBurn-style optical disc imaging, burning, verification and diagnostics utility.",
+  "author": "Iso Maker contributors",
+  "license": "MIT",
+  "homepage": "https://github.com/JohnDimi123/Iso-Maker",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/JohnDimi123/Iso-Maker.git"
+  },
+  "main": "dist/main/main.js",
+  "bin": {
+    "isomaker": "dist/cli/index.js"
+  },
+  "scripts": {
+    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "npm run build && electron .",
+    "cli": "node dist/cli/index.js",
+    "test": "node --test \"dist/test/**/*.test.js\"",
+    "pretest": "npm run build",
+    "dist:win": "npm run build && electron-builder --win nsis --x64 --publish never",
+    "dist:linux": "npm run build && electron-builder --linux AppImage --publish never",
+    "release:win": "npm run build && electron-builder --win nsis --x64 --publish always"
+  },
+  "build": {
+    "extends": null,
+    "appId": "org.isomaker.app",
+    "productName": "Iso Maker",
+    "copyright": "Copyright © 2026 Iso Maker contributors",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "package.json"
+    ],
+    "extraMetadata": {
+      "main": "dist/main/main.js"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "IsoMaker-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Iso Maker"
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "Utility",
+      "artifactName": "IsoMaker-${version}.${ext}"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "JohnDimi123",
+        "repo": "Iso-Maker",
+        "releaseType": "release"
+      }
+    ]
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.7",
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3",
+    "esbuild": "^0.21.5",
+    "typescript": "^5.4.5"
+  },
+  "dependencies": {}
+}

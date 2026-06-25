@@ -1,0 +1,12 @@
+node_modules/
+dist/
+release/
+*.log
+.DS_Store
+.env
+.cache/
+scratch/
+*.iso
+*.bin
+*.img
+!test/fixtures/**
