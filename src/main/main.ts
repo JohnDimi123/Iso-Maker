@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { logger, consoleSink } from '../core/logger';
 import { APP_NAME } from '../shared/constants';
 import { registerIpcHandlers } from './ipc-handlers';
+import { registerPlatformBurnAdapter } from '../burn-engine/real-adapter';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -13,8 +14,9 @@ function createWindow(): void {
     height: 840,
     minWidth: 1024,
     minHeight: 640,
-    backgroundColor: '#15161c',
+    backgroundColor: '#ece9d8',
     title: APP_NAME,
+    icon: join(__dirname, '../renderer/icon.png'),
     autoHideMenuBar: true,
     webPreferences: {
       preload: join(__dirname, '../preload/preload.js'),
@@ -42,6 +44,7 @@ app.whenReady().then(() => {
   logger.child('app').info(`${APP_NAME} starting (electron ${process.versions.electron})`);
 
   registerIpcHandlers();
+  registerPlatformBurnAdapter();
   createWindow();
 
   app.on('activate', () => {

@@ -6,31 +6,19 @@
     <title>Iso Maker</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
-  <body data-theme="dark">
+  <body data-theme="light">
     <div id="app">
-      <aside id="sidebar">
-        <div class="brand">
-          <div class="logo">◎</div>
-          <div>
-            <div class="brand-name">Iso Maker</div>
-            <div class="brand-sub">disc imaging suite</div>
-          </div>
-        </div>
-        <nav id="modes"></nav>
-        <div class="sidebar-footer">
-          <button id="theme-toggle" class="ghost-btn" title="Toggle theme">🌓 Theme</button>
-          <div id="app-version" class="muted"></div>
-        </div>
-      </aside>
+      <!-- Classic title strip -->
+      <div id="titlebar">
+        <img id="title-logo" src="icon.png" alt="" width="20" height="20" />
+        <span id="title-text">Iso Maker</span>
+      </div>
+
+      <!-- Menu bar (File / View / Mode / Tools / Help) -->
+      <nav id="menubar"></nav>
 
       <main id="main">
-        <header id="header">
-          <div>
-            <h1 id="mode-title">Discovery</h1>
-            <p id="mode-desc" class="muted"></p>
-          </div>
-        </header>
-
+        <div id="breadcrumb"></div>
         <section id="content"></section>
 
         <section id="progress-area">
@@ -47,15 +35,18 @@
           </div>
         </section>
       </main>
+
+      <section id="console">
+        <div class="console-head">
+          <span>Operation log</span>
+          <button id="clear-log" class="ghost-btn">Clear</button>
+        </div>
+        <div id="log-list"></div>
+      </section>
     </div>
 
-    <section id="console">
-      <div class="console-head">
-        <span>Operation log</span>
-        <button id="clear-log" class="ghost-btn">Clear</button>
-      </div>
-      <div id="log-list"></div>
-    </section>
+    <!-- Modal host (Settings / About) -->
+    <div id="modal-overlay" hidden><div id="modal"></div></div>
 
     <script src="renderer.js"></script>
   </body>

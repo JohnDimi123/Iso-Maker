@@ -32,6 +32,7 @@ export const Channels = {
   verifyRun: 'verify:run',
   checksum: 'verify:checksum',
   testRead: 'test:read',
+  readDisc: 'disc:read',
   burnRun: 'burn:run',
   burnCancel: 'burn:cancel',
   dialogOpenFiles: 'dialog:openFiles',
@@ -97,6 +98,7 @@ export interface IsoMakerApi {
   verify(spec: VerifySpec): Promise<VerifyResult>;
   checksum(path: string, algorithms: HashAlgorithm[]): Promise<HashResult[]>;
   readTest(path: string): Promise<DiagnosticsReport>;
+  readDiscToImage(driveId: string, outPath: string): Promise<{ bytesWritten: number }>;
   burn(req: BurnRequest): Promise<BurnResponse>;
   cancelBurn(jobId: string): Promise<void>;
   chooseFiles(): Promise<string[]>;

@@ -20,6 +20,7 @@ const api: IsoMakerApi = {
   verify: (spec) => ipcRenderer.invoke(Channels.verifyRun, spec),
   checksum: (path, algorithms) => ipcRenderer.invoke(Channels.checksum, path, algorithms),
   readTest: (path) => ipcRenderer.invoke(Channels.testRead, path),
+  readDiscToImage: (driveId, outPath) => ipcRenderer.invoke(Channels.readDisc, driveId, outPath),
   burn: (req) => ipcRenderer.invoke(Channels.burnRun, req),
   cancelBurn: (jobId) => ipcRenderer.invoke(Channels.burnCancel, jobId),
   chooseFiles: () => ipcRenderer.invoke(Channels.dialogOpenFiles),

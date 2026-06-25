@@ -1,8 +1,9 @@
 /**
  * Iso Maker renderer.
  *
- * A dependency-free, mode-based UI (Discovery / Read / Build / Write / Verify /
- * Test) that talks to the engines through the typed `window.isoMaker` bridge.
+ * An ImgBurn-style, dependency-free UI: a classic menu bar + a "What would you
+ * like to do?" launcher of mode tiles, each talking to the engines through the
+ * typed `window.isoMaker` bridge.
  */
 import type {
   BuildSpec,
@@ -55,19 +56,63 @@ function fmtTime(s: number): string {
 }
 
 // --------------------------------------------------------------------------
+// Settings (persisted to localStorage; modes read their defaults from here)
+// --------------------------------------------------------------------------
+interface Settings {
+  theme: 'light' | 'dark';
+  showLog: boolean;
+  defaultLabel: string;
+  joliet: boolean;
+  udf: boolean;
+  verify: boolean;
+  finalize: boolean;
+  bup: boolean;
+}
+const DEFAULT_SETTINGS: Settings = {
+  theme: 'light',
+  showLog: true,
+  defaultLabel: 'ISO_VOLUME',
+  joliet: true,
+  udf: false,
+  verify: true,
+  finalize: true,
+  bup: true
+};
+function loadSettings(): Settings {
+  try {
+    return { ...DEFAULT_SETTINGS, ...JSON.parse(localStorage.getItem('isomaker-settings') || '{}') };
+  } catch {
+    return { ...DEFAULT_SETTINGS };
+  }
+}
+const settings = loadSettings();
+function applySettings(): void {
+  document.body.dataset.theme = settings.theme;
+  $('#console').style.display = settings.showLog ? '' : 'none';
+  drawGraph();
+}
+function saveSettings(): void {
+  localStorage.setItem('isomaker-settings', JSON.stringify(settings));
+  applySettings();
+}
+
+let appVersion = '';
+let appPlatform = '';
+
+// --------------------------------------------------------------------------
 // Progress + speed graph
 // --------------------------------------------------------------------------
 const speedSamples: number[] = [];
 function drawGraph(): void {
   const canvas = $('#speed-graph') as HTMLCanvasElement;
-  const ctx = canvas.getContext('2d');
+  const ctx = canvas?.getContext('2d');
   if (!ctx) return;
   const { width, height } = canvas;
   ctx.clearRect(0, 0, width, height);
   if (speedSamples.length < 2) return;
   const max = Math.max(...speedSamples, 1);
   const style = getComputedStyle(document.body);
-  ctx.strokeStyle = style.getPropertyValue('--accent') || '#4f8cff';
+  ctx.strokeStyle = style.getPropertyValue('--accent') || '#2f6fe0';
   ctx.lineWidth = 1.5;
   ctx.beginPath();
   speedSamples.forEach((v, i) => {
@@ -120,14 +165,41 @@ function appendLog(entry: LogEntry): void {
   list.scrollTop = list.scrollHeight;
 }
 
+function statusReplace(el: HTMLElement, msg: string, kind: 'ok' | 'error' | 'info' = 'info'): void {
+  const color = kind === 'ok' ? 'var(--ok)' : kind === 'error' ? 'var(--danger)' : 'var(--text-dim)';
+  el.replaceChildren(h('span', { style: `color:${color}` }, msg));
+}
+
+// --------------------------------------------------------------------------
+// Shared drive/speed controls
+// --------------------------------------------------------------------------
+function driveControls() {
+  let drives: DriveInfo[] = [];
+  const driveSelect = h('select', {}) as HTMLSelectElement;
+  const speedSelect = h('select', {}) as HTMLSelectElement;
+  const refreshSpeeds = () => {
+    const drive = drives.find((d) => d.id === driveSelect.value);
+    const speeds = drive?.media.writeSpeeds ?? [{ multiplier: 0, kbps: 0, label: 'MAX (auto)' }];
+    speedSelect.replaceChildren(...speeds.map((s) => h('option', { value: String(s.kbps) }, s.label)));
+  };
+  const load = async () => {
+    drives = await api.listDrives(true);
+    driveSelect.replaceChildren(
+      ...drives.map((d) => h('option', { value: d.id }, `${d.vendor} ${d.model}${d.simulated ? ' (sim)' : ''}`))
+    );
+    refreshSpeeds();
+  };
+  driveSelect.addEventListener('change', refreshSpeeds);
+  void load();
+  return { driveSelect, speedSelect, getDrives: () => drives };
+}
+
 // --------------------------------------------------------------------------
 // Modes
 // --------------------------------------------------------------------------
 interface Mode {
   id: string;
   title: string;
-  icon: string;
-  desc: string;
   render(): HTMLElement;
 }
 
@@ -135,8 +207,6 @@ interface Mode {
 const discoveryMode: Mode = {
   id: 'discovery',
   title: 'Discovery',
-  icon: '🔎',
-  desc: 'Detect optical drives, capabilities and inserted media.',
   render() {
     const list = h('div', {});
     const refresh = async () => {
@@ -192,9 +262,7 @@ function driveCard(d: DriveInfo): HTMLElement {
 // ---- Read / Inspect ----
 const readMode: Mode = {
   id: 'read',
-  title: 'Read',
-  icon: '💿',
-  desc: 'Inspect a disc image or build an image from a disc.',
+  title: 'Inspect image file',
   render() {
     const out = h('div', {});
     const open = async () => {
@@ -279,65 +347,74 @@ function imageInfoCard(info: ImageInfo): HTMLElement {
   return card;
 }
 
-// ---- Build ----
-interface BuildState {
-  sources: { sourcePath: string; name: string }[];
-}
-const buildState: BuildState = { sources: [] };
+// ---- Source-file picker (shared by Build + Write files/folders) ----
+function sourcePicker() {
+  const sources: { sourcePath: string; name: string }[] = [];
+  const fileList = h('div', { class: 'list' });
+  const renderList = () => {
+    fileList.replaceChildren(
+      ...(sources.length
+        ? sources.map((s, i) =>
+            h(
+              'div',
+              { class: 'list-item' },
+              h('span', { class: 'grow', title: s.sourcePath }, s.name),
+              h('span', { class: 'mono muted' }, s.sourcePath),
+              h('button', { class: 'ghost-btn', onclick: () => { sources.splice(i, 1); renderList(); } }, '✕')
+            )
+          )
+        : [h('div', { class: 'empty' }, 'No files added.')])
+    );
+  };
+  const addPaths = (paths: string[]) => {
+    for (const p of paths) {
+      const name = p.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || p;
+      if (!sources.some((s) => s.sourcePath === p)) sources.push({ sourcePath: p, name });
+    }
+    renderList();
+  };
+  renderList();
 
+  const dropzone = h('div', { class: 'dropzone' }, 'Drag files & folders here, or use the buttons below.');
+  dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('drag'); });
+  dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag'));
+  dropzone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropzone.classList.remove('drag');
+    const files = Array.from((e as DragEvent).dataTransfer?.files ?? []);
+    const paths = files.map((f) => (f as File & { path?: string }).path).filter((p): p is string => !!p);
+    if (paths.length) addPaths(paths);
+  });
+
+  const node = h(
+    'div',
+    { class: 'card' },
+    h('h2', {}, 'Source files'),
+    dropzone,
+    h(
+      'div',
+      { class: 'row', style: 'margin:12px 0' },
+      h('button', { class: 'btn secondary', onclick: async () => addPaths(await api.chooseFiles()) }, '+ Add files'),
+      h('button', { class: 'btn secondary', onclick: async () => { const d = await api.chooseFolder(); if (d) addPaths([d]); } }, '+ Add folder'),
+      h('button', { class: 'ghost-btn', onclick: () => { sources.length = 0; renderList(); } }, 'Clear')
+    ),
+    fileList
+  );
+  return { node, sources, scan: () => api.scanSources(sources.map((s) => s.sourcePath)) };
+}
+
+// ---- Build (Create image file from files/folders) ----
 const buildMode: Mode = {
   id: 'build',
-  title: 'Build',
-  icon: '🧱',
-  desc: 'Create an ISO9660 / Joliet image from files and folders.',
+  title: 'Create image file from files/folders',
   render() {
-    const fileList = h('div', { class: 'list' });
+    const picker = sourcePicker();
     const sizeOut = h('div', { class: 'muted' }, 'No size calculated yet.');
     const resultOut = h('div', {});
 
-    const renderList = () => {
-      fileList.replaceChildren(
-        ...(buildState.sources.length
-          ? buildState.sources.map((s, i) =>
-              h(
-                'div',
-                { class: 'list-item' },
-                h('span', { class: 'grow', title: s.sourcePath }, s.name),
-                h('span', { class: 'mono muted' }, s.sourcePath),
-                h('button', { class: 'ghost-btn', onclick: () => { buildState.sources.splice(i, 1); renderList(); } }, '✕')
-              )
-            )
-          : [h('div', { class: 'empty' }, 'No files added.')])
-      );
-    };
-    renderList();
-
-    const addPaths = (paths: string[]) => {
-      for (const p of paths) {
-        const name = p.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || p;
-        if (!buildState.sources.some((s) => s.sourcePath === p)) buildState.sources.push({ sourcePath: p, name });
-      }
-      renderList();
-    };
-
-    const dropzone = h(
-      'div',
-      { class: 'dropzone' },
-      'Drag files & folders here, or use the buttons below.'
-    );
-    dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('drag'); });
-    dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag'));
-    dropzone.addEventListener('drop', (e) => {
-      e.preventDefault();
-      dropzone.classList.remove('drag');
-      const files = Array.from((e as DragEvent).dataTransfer?.files ?? []);
-      const paths = files.map((f) => (f as File & { path?: string }).path).filter((p): p is string => !!p);
-      if (paths.length) addPaths(paths);
-    });
-
-    const label = h('input', { type: 'text', value: 'ISO_VOLUME' }) as HTMLInputElement;
-    const joliet = h('input', { type: 'checkbox', checked: true }) as HTMLInputElement;
-    const udf = h('input', { type: 'checkbox' }) as HTMLInputElement;
+    const label = h('input', { type: 'text', value: settings.defaultLabel }) as HTMLInputElement;
+    const joliet = h('input', { type: 'checkbox', checked: settings.joliet }) as HTMLInputElement;
+    const udf = h('input', { type: 'checkbox', checked: settings.udf }) as HTMLInputElement;
     const strict = h('input', { type: 'checkbox' }) as HTMLInputElement;
     const bootEnabled = h('input', { type: 'checkbox' }) as HTMLInputElement;
     const bootImage = h('input', { type: 'text', placeholder: '(boot image path)', style: 'flex:1' }) as HTMLInputElement;
@@ -358,35 +435,23 @@ const buildMode: Mode = {
       strictIso9660: strict.checked
     });
 
-    const pickBootImage = async () => {
-      const files = await api.chooseFiles();
-      if (files[0]) bootImage.value = files[0];
-    };
-
-    // Folder scanning needs the filesystem, which lives in main; ask it to
-    // expand the chosen top-level paths into a full source-node list.
-    const buildNodes = async (): Promise<BuildSpec['sources']> => {
-      const { nodes } = await api.scanSources(buildState.sources.map((s) => s.sourcePath));
-      return nodes;
-    };
-
     const calcSize = async () => {
-      if (!buildState.sources.length) return statusReplace(sizeOut, 'Add files first.', 'error');
+      if (!picker.sources.length) return statusReplace(sizeOut, 'Add files first.', 'error');
       sizeOut.textContent = 'Calculating…';
-      const spec = { ...buildSpec(''), sources: await buildNodes() };
-      const size = await api.buildSize(spec);
+      const { nodes } = await picker.scan();
+      const size = await api.buildSize({ ...buildSpec(''), sources: nodes });
       statusReplace(sizeOut, `Estimated image size: ${fmtBytes(size.sizeBytes)} (${size.sectorCount} sectors)`, 'ok');
     };
 
     const doBuild = async () => {
-      if (!buildState.sources.length) return statusReplace(resultOut, 'Add files first.', 'error');
+      if (!picker.sources.length) return statusReplace(resultOut, 'Add files first.', 'error');
       const output = await api.chooseSave(`${label.value || 'image'}.iso`);
       if (!output) return;
       resetProgress();
       resultOut.replaceChildren(h('div', { class: 'empty' }, 'Building…'));
       try {
-        const spec = { ...buildSpec(output), sources: await buildNodes() };
-        const result = await api.buildIso(spec);
+        const { nodes } = await picker.scan();
+        const result = await api.buildIso({ ...buildSpec(output), sources: nodes });
         resultOut.replaceChildren(
           h(
             'div',
@@ -409,12 +474,7 @@ const buildMode: Mode = {
     return h(
       'div',
       {},
-      h('div', { class: 'card' }, h('h2', {}, 'Source files'), dropzone,
-        h('div', { class: 'row', style: 'margin:12px 0' },
-          h('button', { class: 'btn secondary', onclick: async () => addPaths(await api.chooseFiles()) }, '+ Add files'),
-          h('button', { class: 'btn secondary', onclick: async () => { const d = await api.chooseFolder(); if (d) addPaths([d]); } }, '+ Add folder'),
-          h('button', { class: 'ghost-btn', onclick: () => { buildState.sources = []; renderList(); } }, 'Clear')),
-        fileList),
+      picker.node,
       h('div', { class: 'card' }, h('h2', {}, 'Image options'),
         h('div', { class: 'grid-2' },
           h('label', { class: 'field' }, 'Volume label', label),
@@ -425,7 +485,7 @@ const buildMode: Mode = {
         h('div', { style: 'margin-top:12px' },
           h('label', { class: 'check' }, bootEnabled, 'Bootable (El Torito)'),
           h('div', { class: 'row', style: 'margin-top:8px' }, bootImage,
-            h('button', { class: 'ghost-btn', onclick: pickBootImage }, 'Browse'),
+            h('button', { class: 'ghost-btn', onclick: async () => { const f = await api.chooseFiles(); if (f[0]) bootImage.value = f[0]; } }, 'Browse'),
             bootEmul, h('label', { class: 'check' }, bootInfo, 'Boot info table')))),
       h('div', { class: 'card' },
         h('div', { class: 'row spread' },
@@ -438,43 +498,21 @@ const buildMode: Mode = {
   }
 };
 
-function statusReplace(el: HTMLElement, msg: string, kind: 'ok' | 'error' | 'info' = 'info'): void {
-  const color = kind === 'ok' ? 'var(--ok)' : kind === 'error' ? 'var(--danger)' : 'var(--text-dim)';
-  el.replaceChildren(h('span', { style: `color:${color}` }, msg));
-}
-
-// ---- Write / Burn ----
+// ---- Write image file to disc ----
 const writeMode: Mode = {
   id: 'write',
-  title: 'Write',
-  icon: '🔥',
-  desc: 'Burn an image to disc (with simulation, verify and buffer-underrun protection).',
+  title: 'Write image file to disc',
   render() {
     let imagePath = '';
-    let drives: DriveInfo[] = [];
     let lastJobId = '';
     const imageLabel = h('span', { class: 'mono muted' }, 'No image selected');
-    const driveSelect = h('select', {}) as HTMLSelectElement;
-    const speedSelect = h('select', {}) as HTMLSelectElement;
+    const { driveSelect, speedSelect } = driveControls();
     const testMode = h('input', { type: 'checkbox' }) as HTMLInputElement;
-    const verifyChk = h('input', { type: 'checkbox', checked: true }) as HTMLInputElement;
-    const finalizeChk = h('input', { type: 'checkbox', checked: true }) as HTMLInputElement;
+    const verifyChk = h('input', { type: 'checkbox', checked: settings.verify }) as HTMLInputElement;
+    const finalizeChk = h('input', { type: 'checkbox', checked: settings.finalize }) as HTMLInputElement;
     const eraseChk = h('input', { type: 'checkbox' }) as HTMLInputElement;
-    const bupChk = h('input', { type: 'checkbox', checked: true }) as HTMLInputElement;
+    const bupChk = h('input', { type: 'checkbox', checked: settings.bup }) as HTMLInputElement;
     const result = h('div', {});
-
-    const refreshSpeeds = () => {
-      const drive = drives.find((d) => d.id === driveSelect.value);
-      const speeds = drive?.media.writeSpeeds ?? [{ multiplier: 0, kbps: 0, label: 'MAX (auto)' }];
-      speedSelect.replaceChildren(...speeds.map((s) => h('option', { value: String(s.kbps) }, s.label)));
-    };
-    const loadDrives = async () => {
-      drives = await api.listDrives(true);
-      driveSelect.replaceChildren(...drives.map((d) => h('option', { value: d.id }, `${d.vendor} ${d.model}${d.simulated ? ' (sim)' : ''}`)));
-      refreshSpeeds();
-    };
-    driveSelect.addEventListener('change', refreshSpeeds);
-    void loadDrives();
 
     const pickImage = async () => {
       const p = await api.chooseImage();
@@ -508,12 +546,15 @@ const writeMode: Mode = {
         lastJobId = res.jobId;
         const kind = res.ok ? 'ok' : 'error';
         const lines = [
-          `${res.ok ? 'Burn succeeded' : 'Burn failed'}${res.simulated ? ' (simulation)' : ''}`,
+          `${res.ok ? 'Burn succeeded' : 'Burn failed'}${res.simulated ? ' (simulation — no physical drive)' : ''}`,
           res.error ? `Error: ${res.error}` : '',
           res.verify ? `Verification: ${res.verify.ok ? 'PASSED' : 'FAILED'}` : ''
         ].filter(Boolean);
-        result.replaceChildren(h('div', { class: 'card' }, h('h2', {}, 'Result'), ...lines.map((l) => h('div', { class: 'muted', style: `color:${kind === 'ok' ? 'var(--ok)' : 'var(--danger)'}` }, l)),
-          res.verify ? h('pre', { class: 'report' }, res.verify.report) : null));
+        result.replaceChildren(
+          h('div', { class: 'card' }, h('h2', {}, 'Result'),
+            ...lines.map((l) => h('div', { class: 'muted', style: `color:${kind === 'ok' ? 'var(--ok)' : 'var(--danger)'}` }, l)),
+            res.verify ? h('pre', { class: 'report' }, res.verify.report) : null)
+        );
       } catch (err) {
         statusReplace(result, String(err), 'error');
       }
@@ -536,8 +577,133 @@ const writeMode: Mode = {
           h('label', { class: 'check' }, bupChk, 'Buffer-underrun protection'))),
       h('div', { class: 'card' },
         h('div', { class: 'row' },
-          h('button', { class: 'btn', onclick: burn }, '🔥 Burn'),
+          h('button', { class: 'btn', onclick: burn }, '🔥 Write'),
           h('button', { class: 'btn danger', onclick: () => lastJobId && api.cancelBurn(lastJobId) }, 'Cancel')),
+        result)
+    );
+  }
+};
+
+// ---- Write files/folders to disc (build → burn in one step) ----
+const writeFilesMode: Mode = {
+  id: 'writefiles',
+  title: 'Write files/folders to disc',
+  render() {
+    const picker = sourcePicker();
+    const { driveSelect, speedSelect } = driveControls();
+    const label = h('input', { type: 'text', value: settings.defaultLabel }) as HTMLInputElement;
+    const joliet = h('input', { type: 'checkbox', checked: settings.joliet }) as HTMLInputElement;
+    const verifyChk = h('input', { type: 'checkbox', checked: settings.verify }) as HTMLInputElement;
+    const finalizeChk = h('input', { type: 'checkbox', checked: settings.finalize }) as HTMLInputElement;
+    const keepImage = h('input', { type: 'checkbox' }) as HTMLInputElement;
+    let lastJobId = '';
+    const result = h('div', {});
+
+    const go = async () => {
+      if (!picker.sources.length) return statusReplace(result, 'Add files first.', 'error');
+      if (!driveSelect.value) return statusReplace(result, 'Select a drive first.', 'error');
+      const output = await api.chooseSave(`${label.value || 'image'}.iso`);
+      if (!output) return;
+      resetProgress();
+      result.replaceChildren(h('div', { class: 'empty' }, 'Building image…'));
+      try {
+        const { nodes } = await picker.scan();
+        const built = await api.buildIso({
+          volumeLabel: label.value || 'ISO_VOLUME',
+          sources: nodes,
+          fileSystems: { iso9660: true, joliet: joliet.checked, udf: false },
+          boot: { enabled: false, emulation: 'none', bootInfoTable: false },
+          outputPath: output,
+          strictIso9660: false
+        });
+        result.replaceChildren(h('div', { class: 'empty' }, `Image built (${fmtBytes(built.sizeBytes)}). Burning…`));
+        const res = await api.burn({
+          imagePath: built.outputPath,
+          driveId: driveSelect.value,
+          options: {
+            speedKbps: parseInt(speedSelect.value || '0', 10),
+            testMode: false,
+            verify: verifyChk.checked,
+            finalize: finalizeChk.checked,
+            eraseFirst: false,
+            eraseMode: 'quick',
+            retries: 3,
+            bufferUnderrunProtection: settings.bup,
+            layerBreak: 0
+          }
+        });
+        lastJobId = res.jobId;
+        const ok = res.ok;
+        result.replaceChildren(
+          h('div', { class: 'card' }, h('h2', {}, 'Result'),
+            h('div', { style: `color:${ok ? 'var(--ok)' : 'var(--danger)'}` },
+              `${ok ? 'Files written to disc' : 'Burn failed'}${res.simulated ? ' (simulation — no physical drive)' : ''}`),
+            res.error ? h('div', { style: 'color:var(--danger)' }, res.error) : null,
+            res.verify ? h('div', { class: 'muted' }, `Verification: ${res.verify.ok ? 'PASSED' : 'FAILED'}`) : null,
+            keepImage.checked ? h('div', { class: 'muted' }, `Image kept at ${built.outputPath}`) : null)
+        );
+      } catch (err) {
+        statusReplace(result, String(err), 'error');
+      }
+    };
+
+    return h(
+      'div',
+      {},
+      picker.node,
+      h('div', { class: 'card' }, h('h2', {}, 'Destination & options'),
+        h('div', { class: 'grid-2' },
+          h('label', { class: 'field' }, 'Volume label', label),
+          h('label', { class: 'field' }, 'Drive', driveSelect)),
+        h('div', { class: 'grid-2', style: 'margin-top:12px' },
+          h('label', { class: 'field' }, 'Write speed', speedSelect),
+          h('div', { class: 'row', style: 'align-items:flex-end;gap:16px' },
+            h('label', { class: 'check' }, joliet, 'Joliet'),
+            h('label', { class: 'check' }, verifyChk, 'Verify'),
+            h('label', { class: 'check' }, finalizeChk, 'Finalize'),
+            h('label', { class: 'check' }, keepImage, 'Keep image')))),
+      h('div', { class: 'card' },
+        h('div', { class: 'row' },
+          h('button', { class: 'btn', onclick: go }, '🔥 Build & Write'),
+          h('button', { class: 'btn danger', onclick: () => lastJobId && api.cancelBurn(lastJobId) }, 'Cancel')),
+        result)
+    );
+  }
+};
+
+// ---- Create image file from disc (rip) ----
+const ripMode: Mode = {
+  id: 'rip',
+  title: 'Create image file from disc',
+  render() {
+    const { driveSelect, getDrives } = driveControls();
+    const result = h('div', {});
+    const rip = async () => {
+      const drive = getDrives().find((d) => d.id === driveSelect.value);
+      if (!drive) return statusReplace(result, 'Select a drive first.', 'error');
+      if (drive.simulated)
+        return statusReplace(result, 'This is a simulated drive. Reading a real disc needs a physical drive with media inserted.', 'error');
+      const out = await api.chooseSave(`${drive.media.label || 'disc'}.iso`);
+      if (!out) return;
+      resetProgress();
+      result.replaceChildren(h('div', { class: 'empty' }, 'Reading disc…'));
+      try {
+        const r = await api.readDiscToImage(drive.id, out);
+        result.replaceChildren(
+          h('div', { class: 'card' }, h('h2', {}, 'Image created'),
+            h('div', { class: 'kv' }, 'Output', out, 'Bytes read', fmtBytes(r.bytesWritten)))
+        );
+      } catch (err) {
+        statusReplace(result, String(err), 'error');
+      }
+    };
+    return h(
+      'div',
+      {},
+      h('div', { class: 'card' }, h('h2', {}, 'Source disc'),
+        h('p', { class: 'muted' }, 'Reads the inserted disc sector-by-sector into an .iso image. Requires a physical drive with media.'),
+        h('label', { class: 'field' }, 'Drive', driveSelect),
+        h('div', { class: 'row', style: 'margin-top:12px' }, h('button', { class: 'btn', onclick: rip }, 'Read disc to image…')),
         result)
     );
   }
@@ -547,8 +713,6 @@ const writeMode: Mode = {
 const verifyMode: Mode = {
   id: 'verify',
   title: 'Verify',
-  icon: '✅',
-  desc: 'Compare a source image against a target, or hash a single file.',
   render() {
     let source = '';
     let target = '';
@@ -595,9 +759,7 @@ const verifyMode: Mode = {
 // ---- Test ----
 const testMode2: Mode = {
   id: 'test',
-  title: 'Test',
-  icon: '🧪',
-  desc: 'Sequential read test, surface scan and media-quality assessment.',
+  title: 'Read test & surface scan',
   render() {
     const out = h('div', {});
     const run = async () => {
@@ -625,55 +787,272 @@ const testMode2: Mode = {
   }
 };
 
-// --------------------------------------------------------------------------
-// App shell
-// --------------------------------------------------------------------------
-const modes: Mode[] = [discoveryMode, readMode, buildMode, writeMode, verifyMode, testMode2];
-let activeMode = modes[0];
+const allModes: Mode[] = [writeMode, writeFilesMode, ripMode, buildMode, verifyMode, discoveryMode, readMode, testMode2];
 
-function selectMode(mode: Mode): void {
-  activeMode = mode;
-  $('#mode-title').textContent = mode.title;
-  $('#mode-desc').textContent = mode.desc;
-  $('#content').replaceChildren(mode.render());
-  document.querySelectorAll('.mode-btn').forEach((b) => b.classList.toggle('active', (b as HTMLElement).dataset.mode === mode.id));
-  resetProgress();
+// --------------------------------------------------------------------------
+// Launcher (home)
+// --------------------------------------------------------------------------
+interface Tile {
+  src: string;
+  tgt?: string;
+  title: string;
+  desc: string;
+  view: string;
+}
+const TILES: Tile[] = [
+  { src: '📄', tgt: '💿', title: 'Write image file to disc', desc: 'Burn an existing ISO/BIN/IMG/NRG to CD/DVD/BD.', view: 'write' },
+  { src: '📁', tgt: '💿', title: 'Write files/folders to disc', desc: 'Build an image from files, then burn it.', view: 'writefiles' },
+  { src: '💿', tgt: '📄', title: 'Create image file from disc', desc: 'Read a disc into an .iso image (rip).', view: 'rip' },
+  { src: '📁', tgt: '📄', title: 'Create image file from files/folders', desc: 'Make an ISO9660 / Joliet / bootable image.', view: 'build' },
+  { src: '🔍', tgt: '💿', title: 'Verify disc', desc: 'Hash & compare an image/disc against a source.', view: 'verify' },
+  { src: '🔬', title: 'Discovery', desc: 'Detect drives, capabilities and inserted media.', view: 'discovery' }
+];
+
+function renderHome(): HTMLElement {
+  const grid = h('div', { id: 'launcher' });
+  for (const t of TILES) {
+    grid.append(
+      h(
+        'div',
+        { class: 'tile', onclick: () => showView(t.view) },
+        h('div', { class: 'tile-ico' }, t.src, t.tgt ? h('span', { class: 'arrow' }, '➜') : null, t.tgt ?? ''),
+        h('div', { class: 'tile-text' }, h('div', { class: 't' }, t.title), h('div', { class: 'd' }, t.desc))
+      )
+    );
+  }
+  return h('div', {}, h('div', { class: 'launcher-head' }, 'What would you like to do?'), grid);
 }
 
-function buildSidebar(): void {
-  const nav = $('#modes');
-  nav.replaceChildren(
-    ...modes.map((m) => {
-      const btn = h('button', { class: 'mode-btn', 'data-mode': m.id, onclick: () => selectMode(m) }, h('span', { class: 'ico' }, m.icon), m.title);
-      return btn;
-    })
+// --------------------------------------------------------------------------
+// Routing + breadcrumb
+// --------------------------------------------------------------------------
+function setBreadcrumb(title: string | null): void {
+  const bc = $('#breadcrumb');
+  if (!title) {
+    bc.replaceChildren();
+    bc.style.display = 'none';
+    return;
+  }
+  bc.style.display = '';
+  bc.replaceChildren(
+    h('a', { onclick: showHome }, '⌂ Home'),
+    h('span', {}, '▸'),
+    h('span', { class: 'crumb-title' }, title)
   );
 }
 
-function initTheme(): void {
-  const saved = localStorage.getItem('isomaker-theme') || 'dark';
-  document.body.dataset.theme = saved;
-  $('#theme-toggle').addEventListener('click', () => {
-    const next = document.body.dataset.theme === 'dark' ? 'light' : 'dark';
-    document.body.dataset.theme = next;
-    localStorage.setItem('isomaker-theme', next);
-    drawGraph();
-  });
+function showHome(): void {
+  setBreadcrumb(null);
+  $('#content').replaceChildren(renderHome());
+  resetProgress();
+  closeMenus();
 }
 
-async function init(): Promise<void> {
-  buildSidebar();
-  initTheme();
+function showView(id: string): void {
+  const m = allModes.find((x) => x.id === id);
+  if (!m) return showHome();
+  setBreadcrumb(m.title);
+  $('#content').replaceChildren(m.render());
   resetProgress();
-  selectMode(modes[0]);
+  closeMenus();
+}
+
+// --------------------------------------------------------------------------
+// Menu bar
+// --------------------------------------------------------------------------
+type Entry = 'sep' | { label: string; hint?: string; action: () => void };
+
+function closeMenus(): void {
+  document.querySelectorAll('.menu-dropdown').forEach((d) => ((d as HTMLElement).hidden = true));
+  document.querySelectorAll('.menu-item.open').forEach((i) => i.classList.remove('open'));
+}
+
+function menuItem(label: string, entries: Entry[]): HTMLElement {
+  const dd = h('div', { class: 'menu-dropdown' });
+  dd.hidden = true;
+  for (const e of entries) {
+    if (e === 'sep') {
+      dd.append(h('div', { class: 'menu-sep' }));
+      continue;
+    }
+    dd.append(
+      h('div', { class: 'menu-entry', onclick: () => { closeMenus(); e.action(); } },
+        h('span', {}, e.label),
+        e.hint ? h('span', { class: 'hint' }, e.hint) : null)
+    );
+  }
+  const item = h('div', { class: 'menu-item' }, label, dd);
+  item.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    const wasOpen = !dd.hidden;
+    closeMenus();
+    if (!wasOpen) {
+      item.classList.add('open');
+      dd.hidden = false;
+      dd.style.left = `${item.offsetLeft}px`;
+    }
+  });
+  return item;
+}
+
+function buildMenubar(): void {
+  const modeEntry = (id: string): Entry => {
+    const m = allModes.find((x) => x.id === id)!;
+    return { label: m.title, action: () => showView(id) };
+  };
+  const bar = $('#menubar');
+  bar.replaceChildren(
+    menuItem('File', [
+      { label: 'Home', action: showHome },
+      'sep',
+      { label: 'Exit', action: () => window.close() }
+    ]),
+    menuItem('View', [
+      { label: 'Toggle log window', action: () => { settings.showLog = !settings.showLog; saveSettings(); } },
+      { label: 'Toggle light / dark theme', action: () => { settings.theme = settings.theme === 'dark' ? 'light' : 'dark'; saveSettings(); } }
+    ]),
+    menuItem('Mode', [
+      { label: 'Home', action: showHome },
+      'sep',
+      modeEntry('write'),
+      modeEntry('writefiles'),
+      modeEntry('rip'),
+      modeEntry('build'),
+      modeEntry('verify'),
+      modeEntry('read'),
+      modeEntry('test'),
+      modeEntry('discovery')
+    ]),
+    menuItem('Tools', [
+      { label: 'Settings…', action: openSettings },
+      { label: 'Discovery (drives)…', action: () => showView('discovery') }
+    ]),
+    menuItem('Help', [{ label: 'About Iso Maker…', action: openAbout }])
+  );
+}
+
+// --------------------------------------------------------------------------
+// Modal dialogs (Settings / About)
+// --------------------------------------------------------------------------
+function openModal(node: HTMLElement): void {
+  $('#modal').replaceChildren(node);
+  $('#modal-overlay').hidden = false;
+}
+function closeModal(): void {
+  $('#modal-overlay').hidden = true;
+  $('#modal').replaceChildren();
+}
+function dialog(title: string, body: HTMLElement, foot: HTMLElement[]): HTMLElement {
+  return h(
+    'div',
+    {},
+    h('div', { class: 'dialog-title' }, h('span', {}, title), h('span', { class: 'x', onclick: closeModal }, '✕')),
+    h('div', { class: 'dialog-body' }, body),
+    h('div', { class: 'dialog-foot' }, ...foot)
+  );
+}
+
+function openSettings(): void {
+  const theme = h('select', {}, ...['light', 'dark'].map((v) => h('option', { value: v, ...(settings.theme === v ? { selected: 'selected' } : {}) }, v))) as HTMLSelectElement;
+  const showLog = h('input', { type: 'checkbox', checked: settings.showLog }) as HTMLInputElement;
+  const defLabel = h('input', { type: 'text', value: settings.defaultLabel }) as HTMLInputElement;
+  const joliet = h('input', { type: 'checkbox', checked: settings.joliet }) as HTMLInputElement;
+  const udf = h('input', { type: 'checkbox', checked: settings.udf }) as HTMLInputElement;
+  const verify = h('input', { type: 'checkbox', checked: settings.verify }) as HTMLInputElement;
+  const finalize = h('input', { type: 'checkbox', checked: settings.finalize }) as HTMLInputElement;
+  const bup = h('input', { type: 'checkbox', checked: settings.bup }) as HTMLInputElement;
+
+  const pages: Record<string, HTMLElement> = {
+    General: h('div', { class: 'tabpage' },
+      h('div', { class: 'grid-2' },
+        h('label', { class: 'field' }, 'Theme', theme),
+        h('label', { class: 'check', style: 'align-self:flex-end' }, showLog, 'Show log window'))),
+    Build: h('div', { class: 'tabpage' },
+      h('label', { class: 'field' }, 'Default volume label', defLabel),
+      h('div', { class: 'row', style: 'gap:18px;margin-top:12px' },
+        h('label', { class: 'check' }, joliet, 'Joliet by default'),
+        h('label', { class: 'check' }, udf, 'UDF by default'))),
+    Write: h('div', { class: 'tabpage' },
+      h('div', { class: 'row', style: 'gap:18px' },
+        h('label', { class: 'check' }, verify, 'Verify after burn'),
+        h('label', { class: 'check' }, finalize, 'Finalize disc'),
+        h('label', { class: 'check' }, bup, 'Buffer-underrun protection')))
+  };
+  const tabsRow = h('div', { class: 'tabs' });
+  const pageHost = h('div', {});
+  Object.keys(pages).forEach((name, i) => {
+    const tab = h('div', { class: `tab${i === 0 ? ' active' : ''}`, onclick: () => {
+      tabsRow.querySelectorAll('.tab').forEach((t) => t.classList.remove('active'));
+      tab.classList.add('active');
+      pageHost.replaceChildren(pages[name]);
+    } }, name);
+    tabsRow.append(tab);
+    if (i === 0) pageHost.replaceChildren(pages[name]);
+  });
+
+  const save = () => {
+    settings.theme = theme.value as Settings['theme'];
+    settings.showLog = showLog.checked;
+    settings.defaultLabel = defLabel.value || 'ISO_VOLUME';
+    settings.joliet = joliet.checked;
+    settings.udf = udf.checked;
+    settings.verify = verify.checked;
+    settings.finalize = finalize.checked;
+    settings.bup = bup.checked;
+    saveSettings();
+    closeModal();
+  };
+  openModal(dialog('Settings', h('div', {}, tabsRow, pageHost), [
+    h('button', { class: 'btn secondary', onclick: closeModal }, 'Cancel'),
+    h('button', { class: 'btn', onclick: save }, 'OK')
+  ]));
+}
+
+function openAbout(): void {
+  openModal(
+    dialog(
+      'About Iso Maker',
+      h('div', { class: 'about' },
+        h('img', { src: 'icon.png', alt: '' }),
+        h('div', {},
+          h('div', { style: 'font-size:16px;font-weight:700' }, 'Iso Maker'),
+          h('div', { class: 'muted' }, appVersion ? `Version ${appVersion} · ${appPlatform}` : ''),
+          h('p', { style: 'margin:10px 0 0' }, 'A modern, ImgBurn-style optical disc imaging, burning, verification and diagnostics suite.'),
+          h('p', { class: 'muted', style: 'margin:8px 0 0' }, 'Imaging & verification are fully functional. Physical burning uses the platform burn adapter (IMAPI2 on Windows; growisofs/wodim on Linux) when a real drive is present, and otherwise simulates.'))),
+      [h('button', { class: 'btn', onclick: closeModal }, 'Close')]
+    )
+  );
+}
+
+// --------------------------------------------------------------------------
+// Init
+// --------------------------------------------------------------------------
+async function init(): Promise<void> {
+  applySettings();
+  buildMenubar();
+  showHome();
 
   api.onProgress(applyProgress);
   api.onLog(appendLog);
   $('#clear-log').addEventListener('click', () => $('#log-list').replaceChildren());
+  document.addEventListener('click', (e) => {
+    if (!(e.target as HTMLElement).closest('#menubar')) closeMenus();
+  });
+  $('#modal-overlay').addEventListener('click', (e) => {
+    if (e.target === $('#modal-overlay')) closeModal();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      closeModal();
+      closeMenus();
+    }
+  });
 
   try {
     const info = await api.appInfo();
-    $('#app-version').textContent = `v${info.version} · ${info.platform}/${info.arch}`;
+    appVersion = info.version;
+    appPlatform = `${info.platform}/${info.arch}`;
+    $('#title-text').textContent = `Iso Maker ${info.version}`;
   } catch {
     /* ignore */
   }

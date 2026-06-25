@@ -3,6 +3,7 @@
  * Progress + log events are streamed to the renderer via webContents.send.
  */
 import { ipcMain, dialog, BrowserWindow, app } from 'electron';
+import * as fs from 'node:fs';
 import { Channels, Events, type BurnRequest, type BurnResponse } from '../shared/ipc-contract';
 import type { BuildSpec, HashAlgorithm, ProgressEvent, VerifySpec } from '../shared/types';
 import { SUPPORTED_IMAGE_EXTENSIONS, APP_NAME } from '../shared/constants';
@@ -161,6 +162,51 @@ export function registerIpcHandlers(): void {
       })
     )
   );
+
+  // Rip a physical disc to an image file (sequential sector copy of the device).
+  // Real hardware path — not exercised in CI.
+  ipcMain.handle(Channels.readDisc, async (_e, driveId: string, outPath: string) => {
+    const drives = await driveManager.listDrives({ includeSimulated: true });
+    const drive = drives.find((d) => d.id === driveId);
+    if (!drive) throw new Error('Drive not found.');
+    if (drive.simulated)
+      throw new Error('This is a simulated drive — reading a disc to an image requires a physical drive with media.');
+    if (!drive.media.present) throw new Error('No disc present in the drive.');
+
+    const sectorSize = drive.media.sectorSize || 2048;
+    const totalBytes = drive.media.capacityBytes || drive.media.totalSectors * sectorSize;
+    const log = logger.child('rip');
+    log.info(`Reading ${drive.devicePath} -> ${outPath} (${totalBytes} bytes)`);
+    const fd = fs.openSync(drive.devicePath, 'r');
+    const out = fs.openSync(outPath, 'w');
+    const buf = Buffer.alloc(1 << 20);
+    let pos = 0;
+    try {
+      for (;;) {
+        const want = totalBytes > 0 ? Math.min(buf.length, totalBytes - pos) : buf.length;
+        if (want <= 0) break;
+        const n = fs.readSync(fd, buf, 0, want, pos);
+        if (n <= 0) break;
+        fs.writeSync(out, buf, 0, n);
+        pos += n;
+        emitProgress({
+          jobId: 'rip',
+          phase: 'reading',
+          percent: totalBytes ? (pos / totalBytes) * 100 : 0,
+          bytesProcessed: pos,
+          totalBytes,
+          speedBps: 0,
+          etaSeconds: 0,
+          message: 'Reading disc'
+        });
+      }
+    } finally {
+      fs.closeSync(fd);
+      fs.closeSync(out);
+    }
+    log.success(`Disc image written: ${outPath} (${pos} bytes)`);
+    return { bytesWritten: pos };
+  });
 
   ipcMain.handle(Channels.burnRun, async (_e, req: BurnRequest): Promise<BurnResponse> => {
     await driveManager.listDrives({ includeSimulated: true });

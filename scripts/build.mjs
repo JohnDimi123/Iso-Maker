@@ -72,6 +72,9 @@ function copyStatic() {
   mkdirSync(resolve(root, 'dist/renderer'), { recursive: true });
   cpSync(resolve(root, 'src/renderer/index.html'), resolve(root, 'dist/renderer/index.html'));
   cpSync(resolve(root, 'src/renderer/styles.css'), resolve(root, 'dist/renderer/styles.css'));
+  // Ship the window icon inside the package (dist is bundled by electron-builder).
+  const icon = resolve(root, 'build/icon.png');
+  if (existsSync(icon)) cpSync(icon, resolve(root, 'dist/renderer/icon.png'));
 }
 
 const testBuild =

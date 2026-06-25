@@ -5,13 +5,14 @@ diagnostics suite. Iso Maker pairs a clean, mode-based desktop UI (Electron + Ty
 with a modular engine architecture and a full-featured command-line interface for
 automation and batch processing.
 
-> **Honest status.** ImgBurn is a mature Windows application built on years of low-level
-> SCSI/MMC and Windows IMAPI work. Iso Maker implements the **software-achievable feature
-> set for real** (image building, inspection, verification, extraction, conversion,
-> diagnostics, discovery, CLI, UI) and provides a clean **Hardware Abstraction Layer**
-> into which real physical burning plugs. Where physical drive I/O is required, operations
-> run as a faithful, clearly-labelled **simulation** so the entire workflow is usable
-> without hardware. See the status table below for exactly what is real vs. simulated.
+> **Honest status.** Image building, inspection, verification, extraction, conversion,
+> diagnostics, discovery, the CLI and the UI are **fully real** and tested (the ISO builder
+> is cross-checked against `pycdlib` in CI). **Physical burning is implemented** through
+> platform adapters — **IMAPI2** on Windows (the subsystem the Windows shell itself uses)
+> and **growisofs/wodim** on Linux — registered automatically for real drives. Because CI
+> has no optical hardware, those burn/rip paths are **not exercised by CI and must be
+> validated on a real machine**; with no physical drive present the pipeline falls back to a
+> clearly-labelled **simulation** so the whole workflow stays usable. See the table below.
 
 ---
 
@@ -29,6 +30,7 @@ automation and batch processing.
 | **Read / Image mgmt** | Inspect ISO / BIN-CUE / IMG / NRG (label, fs, capacity, tracks) | ✅ Real |
 | | List & extract files from ISO/Joliet images | ✅ Real |
 | | Convert BIN/IMG → ISO (single data track) | ✅ Real |
+| | Create image from disc / rip (sector copy of the device) | 🟢 Implemented; validate on hardware |
 | | Pluggable image-format architecture | ✅ Real |
 | | Virtual mount | 🟡 Documented; OS-dependent, not bundled |
 | **Verify** | CRC32 / MD5 / SHA-1 / SHA-256 hashing | ✅ Real |
@@ -38,10 +40,14 @@ automation and batch processing.
 | **Test / Diagnostics** | Sequential read-performance test | ✅ Real (files & readable devices) |
 | | Surface scan / slow-region & bad-sector detection | ✅ Real |
 | | Detailed troubleshooting logs | ✅ Real |
-| **Write / Burn** | Burn pipeline: erase → write → finalize → verify | 🟡 Simulated (real adapter hooks in HAL) |
-| | Write-speed selection, buffer-underrun model, retries, layer break | ✅ Modelled / 🟡 simulated I/O |
+| **Write / Burn** | Burn an image to a physical disc (Windows IMAPI2 / Linux growisofs/wodim) | 🟢 Implemented; validate on hardware |
+| | Build files/folders → image → burn in one step | 🟢 Implemented; validate on hardware |
+| | Burn pipeline: erase → write → finalize → verify | ✅ Real (simulated when no physical drive) |
+| | Write-speed selection, buffer-underrun model, retries, layer break | ✅ Real / modelled |
 | | Job queue & batch processing | ✅ Real |
-| **UI** | Mode-based UI (Discovery/Read/Build/Write/Verify/Test) | ✅ Real |
+| **UI** | ImgBurn-style launcher ("What would you like to do?") + classic menu bar | ✅ Real |
+| | Custom application icon (burning-disc logo) | ✅ Real |
+| | Settings dialog (General / Build / Write), About dialog | ✅ Real |
 | | Real-time progress, speed graph, ETA, log console | ✅ Real |
 | | Dark / light themes | ✅ Real |
 | **CLI** | `build`, `info`, `list`, `extract`, `convert`, `verify`, `checksum`, `test`, `discover`, `burn`, `formats`, `plugin` | ✅ Real |
@@ -160,12 +166,21 @@ automatically.
 
 ---
 
-## Roadmap to real hardware burning
+## Physical burning — status & validation
 
-1. Windows: `RealBurnAdapter` over IMAPI2 (`IDiscFormat2Data`) / SPTI.
-2. Linux: adapter shelling out to `cdrecord`/`wodim`/`growisofs`, or `libcdio`/SG_IO.
-3. macOS: adapter over `drutil`/DiscRecording.
-4. Real post-burn verification reading sectors back from the drive.
+Real burn adapters are implemented in [`src/burn-engine/real-adapter.ts`](src/burn-engine/real-adapter.ts)
+and registered automatically per platform for non-simulated drives:
+
+- **Windows** — IMAPI2 (`MsftDiscFormat2Data`) driven through PowerShell; no native addon.
+- **Linux** — `growisofs` (DVD/BD) or `wodim` (CD); install `dvd+rw-tools` / `cdrkit`.
+
+Because the CI runners have no optical hardware, these paths are **not covered by automated
+tests**. To validate on a real machine: insert blank media, open *Write image file to disc*,
+pick the physical drive, and burn. Remaining polish:
+
+1. Fine-grained IMAPI2 progress (per-sector `Update` events) and write-speed selection on Linux.
+2. macOS adapter over `drutil` / DiscRecording.
+3. Post-burn verification that reads sectors back from the burned disc (currently re-hashes the source).
 
 The HAL and burn-engine interfaces are designed so these slot in without touching the UI,
 queue, verification or diagnostics code.

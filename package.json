@@ -1,6 +1,6 @@
 {
   "name": "iso-maker",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Iso Maker — a modern, open-source, ImgBurn-style optical disc imaging, burning, verification and diagnostics utility.",
   "author": "Iso Maker contributors",
   "license": "MIT",
@@ -42,6 +42,7 @@
       "main": "dist/main/main.js"
     },
     "win": {
+      "icon": "build/icon.ico",
       "target": [
         {
           "target": "nsis",
@@ -58,9 +59,13 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Iso Maker"
+      "shortcutName": "Iso Maker",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico"
     },
     "linux": {
+      "icon": "build/icon.png",
       "target": [
         "AppImage"
       ],
