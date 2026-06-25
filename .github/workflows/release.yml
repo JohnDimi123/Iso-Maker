@@ -5,6 +5,11 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to create (e.g. v0.1.0)'
+        required: true
+        default: 'v0.1.0'
 
 permissions:
   contents: write
@@ -29,11 +34,12 @@ jobs:
       - name: Run tests
         run: npm test
 
-      - name: Build & publish Windows setup (.exe)
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npx electron-builder --win nsis --x64 --publish always
+      - name: Build Windows setup (.exe)
+        run: npx electron-builder --win nsis --x64 --publish never
+
+      - name: List build output
+        shell: bash
+        run: ls -la release || dir release
 
       - name: Upload installer as workflow artifact
         if: always()
@@ -41,4 +47,20 @@ jobs:
         with:
           name: IsoMaker-Windows-Setup
           path: release/*.exe
-          if-no-files-found: warn
+          if-no-files-found: error
+
+      - name: Publish to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          # On tag pushes use the pushed tag; on manual runs use the input.
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || inputs.tag }}
+          name: Iso Maker ${{ github.ref_type == 'tag' && github.ref_name || inputs.tag }}
+          body: |
+            Iso Maker — Windows setup installer.
+
+            Built by the Release workflow with electron-builder (NSIS).
+            See the README for the full feature list and status.
+          files: release/*.exe
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
