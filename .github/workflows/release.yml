@@ -36,6 +36,14 @@ jobs:
 
       - name: Build Windows setup (.exe)
         run: npx electron-builder --win nsis --x64 --publish never
+        env:
+          # Code signing (optional). Add these repo secrets to sign automatically:
+          #   WINDOWS_CERT_BASE64   = base64 of your code-signing .pfx
+          #   WINDOWS_CERT_PASSWORD = the .pfx password
+          # When unset, electron-builder produces an UNSIGNED build (current behaviour),
+          # which Windows SmartScreen warns about and Smart App Control blocks.
+          CSC_LINK: ${{ secrets.WINDOWS_CERT_BASE64 }}
+          CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
 
       - name: List build output
         shell: bash

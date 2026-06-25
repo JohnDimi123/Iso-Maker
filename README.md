@@ -166,6 +166,38 @@ automatically.
 
 ---
 
+## Installing on Windows — SmartScreen & Smart App Control
+
+The installer is **not code-signed**, so Windows will warn or block it:
+
+- **SmartScreen** — *"Windows protected your PC / unknown publisher."* Click **More info →
+  Run anyway**.
+- **Smart App Control** (Windows 11) is stricter: it **blocks unsigned apps outright** and has
+  **no per-app "run anyway."** Turning Smart App Control off is effectively permanent
+  (re-enabling it requires resetting/reinstalling Windows), so that is **not recommended**.
+
+To run on a Smart-App-Control machine *without* disabling it, run from source — this launches
+through the **signed Electron binary**, which SAC trusts:
+
+```bash
+git clone https://github.com/JohnDimi123/Iso-Maker && cd Iso-Maker
+npm install && npm start            # GUI via the signed electron.exe
+node dist/cli/index.js info x.iso   # …or the CLI
+```
+
+…or **code-sign the build**. The release workflow is already signing-ready: add the repo
+secrets `WINDOWS_CERT_BASE64` (base64 of a `.pfx`) and `WINDOWS_CERT_PASSWORD` and
+electron-builder signs automatically. Certificate options:
+
+- **SignPath Foundation** — free certificates for qualifying open-source projects.
+- **Azure Trusted Signing** — ~$10/month, trusted by SmartScreen and Smart App Control.
+- **OV / EV Authenticode certificate** — an EV cert earns SmartScreen/SAC reputation fastest.
+
+Signing is what Smart App Control actually checks; an EV-signed (or Azure Trusted Signing) build
+is the reliable way to make the installer run with no warnings.
+
+---
+
 ## Physical burning — status & validation
 
 Real burn adapters are implemented in [`src/burn-engine/real-adapter.ts`](src/burn-engine/real-adapter.ts)
