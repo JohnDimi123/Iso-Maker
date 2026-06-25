@@ -175,7 +175,7 @@ function statusReplace(el: HTMLElement, msg: string, kind: 'ok' | 'error' | 'inf
 // --------------------------------------------------------------------------
 function driveControls() {
   let drives: DriveInfo[] = [];
-  const driveSelect = h('select', {}) as HTMLSelectElement;
+  const driveSelect = h('select', { style: 'flex:1;min-width:0' }) as HTMLSelectElement;
   const speedSelect = h('select', {}) as HTMLSelectElement;
   const refreshSpeeds = () => {
     const drive = drives.find((d) => d.id === driveSelect.value);
@@ -183,15 +183,26 @@ function driveControls() {
     speedSelect.replaceChildren(...speeds.map((s) => h('option', { value: String(s.kbps) }, s.label)));
   };
   const load = async () => {
+    const sel = driveSelect.value;
     drives = await api.listDrives(true);
     driveSelect.replaceChildren(
-      ...drives.map((d) => h('option', { value: d.id }, `${d.vendor} ${d.model}${d.simulated ? ' (sim)' : ''}`))
+      ...drives.map((d) => {
+        const m = d.media;
+        const state = m.present
+          ? `${m.type}${m.blank ? ', blank' : m.finalized ? ', finalized' : ''} · ${fmtBytes(m.capacityBytes)}`
+          : 'no media';
+        return h('option', { value: d.id }, `${d.vendor} ${d.model}${d.simulated ? ' (sim)' : ''} — ${state}`);
+      })
     );
+    if (sel && drives.some((d) => d.id === sel)) driveSelect.value = sel;
     refreshSpeeds();
   };
+  const refreshBtn = h('button', { class: 'ghost-btn', title: 'Re-scan drives & inserted media', onclick: () => void load() }, '↻');
+  // Field that pairs the drive selector with its refresh button.
+  const driveField = h('label', { class: 'field' }, 'Drive', h('div', { class: 'row', style: 'gap:6px;flex-wrap:nowrap' }, driveSelect, refreshBtn));
   driveSelect.addEventListener('change', refreshSpeeds);
   void load();
-  return { driveSelect, speedSelect, getDrives: () => drives };
+  return { driveSelect, speedSelect, refreshBtn, driveField, getDrives: () => drives };
 }
 
 // --------------------------------------------------------------------------
@@ -506,7 +517,7 @@ const writeMode: Mode = {
     let imagePath = '';
     let lastJobId = '';
     const imageLabel = h('span', { class: 'mono muted' }, 'No image selected');
-    const { driveSelect, speedSelect } = driveControls();
+    const { driveSelect, speedSelect, driveField } = driveControls();
     const testMode = h('input', { type: 'checkbox' }) as HTMLInputElement;
     const verifyChk = h('input', { type: 'checkbox', checked: settings.verify }) as HTMLInputElement;
     const finalizeChk = h('input', { type: 'checkbox', checked: settings.finalize }) as HTMLInputElement;
@@ -567,7 +578,7 @@ const writeMode: Mode = {
         h('div', { class: 'row' }, h('button', { class: 'btn secondary', onclick: pickImage }, 'Open image…'), imageLabel)),
       h('div', { class: 'card' }, h('h2', {}, 'Destination & options'),
         h('div', { class: 'grid-2' },
-          h('label', { class: 'field' }, 'Drive', driveSelect),
+          driveField,
           h('label', { class: 'field' }, 'Write speed', speedSelect)),
         h('div', { class: 'row', style: 'gap:18px;margin-top:12px' },
           h('label', { class: 'check' }, testMode, 'Test mode (simulate)'),
@@ -590,7 +601,7 @@ const writeFilesMode: Mode = {
   title: 'Write files/folders to disc',
   render() {
     const picker = sourcePicker();
-    const { driveSelect, speedSelect } = driveControls();
+    const { driveSelect, speedSelect, driveField } = driveControls();
     const label = h('input', { type: 'text', value: settings.defaultLabel }) as HTMLInputElement;
     const joliet = h('input', { type: 'checkbox', checked: settings.joliet }) as HTMLInputElement;
     const verifyChk = h('input', { type: 'checkbox', checked: settings.verify }) as HTMLInputElement;
@@ -654,7 +665,7 @@ const writeFilesMode: Mode = {
       h('div', { class: 'card' }, h('h2', {}, 'Destination & options'),
         h('div', { class: 'grid-2' },
           h('label', { class: 'field' }, 'Volume label', label),
-          h('label', { class: 'field' }, 'Drive', driveSelect)),
+          driveField),
         h('div', { class: 'grid-2', style: 'margin-top:12px' },
           h('label', { class: 'field' }, 'Write speed', speedSelect),
           h('div', { class: 'row', style: 'align-items:flex-end;gap:16px' },
@@ -676,7 +687,7 @@ const ripMode: Mode = {
   id: 'rip',
   title: 'Create image file from disc',
   render() {
-    const { driveSelect, getDrives } = driveControls();
+    const { driveSelect, driveField, getDrives } = driveControls();
     const result = h('div', {});
     const rip = async () => {
       const drive = getDrives().find((d) => d.id === driveSelect.value);
@@ -702,7 +713,7 @@ const ripMode: Mode = {
       {},
       h('div', { class: 'card' }, h('h2', {}, 'Source disc'),
         h('p', { class: 'muted' }, 'Reads the inserted disc sector-by-sector into an .iso image. Requires a physical drive with media.'),
-        h('label', { class: 'field' }, 'Drive', driveSelect),
+        driveField,
         h('div', { class: 'row', style: 'margin-top:12px' }, h('button', { class: 'btn', onclick: rip }, 'Read disc to image…')),
         result)
     );
