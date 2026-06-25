@@ -792,20 +792,33 @@ const allModes: Mode[] = [writeMode, writeFilesMode, ripMode, buildMode, verifyM
 // --------------------------------------------------------------------------
 // Launcher (home)
 // --------------------------------------------------------------------------
+// Classic-style inline icons (much closer to the ImgBurn look than emoji).
+const ICONS: Record<string, string> = {
+  doc: `<svg width="36" height="36" viewBox="0 0 36 36"><path d="M7 2.5h14.5L29 10v23.5H7z" fill="#fff" stroke="#8a8a76"/><path d="M21.5 2.5V10H29" fill="#e6e6d8" stroke="#8a8a76"/><g stroke="#9fb0c2" stroke-width="1.4"><path d="M11 16h14M11 20h14M11 24h10"/></g></svg>`,
+  folder: `<svg width="36" height="36" viewBox="0 0 36 36"><path d="M3 8h11l3 3.5h16V30H3z" fill="#e7a93a" stroke="#a9781f"/><path d="M3 13.5h30V30H3z" fill="#ffd25e" stroke="#a9781f"/></svg>`,
+  disc: `<svg width="36" height="36" viewBox="0 0 36 36"><circle cx="18" cy="18" r="15.5" fill="#c9ced6" stroke="#828892"/><circle cx="18" cy="18" r="14.5" fill="none" stroke="#eef2f6"/><path d="M9 9a13 13 0 0 1 13-3" fill="none" stroke="#fff" stroke-width="2" opacity=".7"/><circle cx="18" cy="18" r="4.3" fill="#fff" stroke="#828892"/><circle cx="18" cy="18" r="1.5" fill="#c9ced6"/></svg>`,
+  mag: `<svg width="36" height="36" viewBox="0 0 36 36"><circle cx="15" cy="15" r="9.5" fill="#dcefff" stroke="#34679c" stroke-width="2.2"/><circle cx="15" cy="15" r="5.5" fill="#bfe0ff" opacity=".6"/><line x1="22" y1="22" x2="32" y2="32" stroke="#34679c" stroke-width="3.4" stroke-linecap="round"/></svg>`,
+  drive: `<svg width="36" height="36" viewBox="0 0 36 36"><rect x="3" y="9" width="30" height="17" rx="2" fill="#d9d9cc" stroke="#85857247"/><rect x="3" y="9" width="30" height="17" rx="2" fill="none" stroke="#85857a"/><rect x="6" y="13" width="15" height="3.4" rx="1" fill="#fff" stroke="#b6b6a6"/><circle cx="27.5" cy="17.5" r="2.4" fill="#79a544"/></svg>`,
+  arrow: `<svg width="22" height="22" viewBox="0 0 22 22"><path d="M2 9h10V4.5L20 11l-8 6.5V13H2z" fill="#2f6fd6" stroke="#1c4f9c"/></svg>`
+};
+function ico(kind: string): HTMLElement {
+  if (kind === 'discBurn') return h('img', { src: 'icon.png', class: 'ic ic-disc', width: '36', height: '36', alt: '' });
+  return h('span', { class: 'ic', html: ICONS[kind] ?? '' });
+}
+
 interface Tile {
   src: string;
   tgt?: string;
   title: string;
-  desc: string;
   view: string;
 }
 const TILES: Tile[] = [
-  { src: '📄', tgt: '💿', title: 'Write image file to disc', desc: 'Burn an existing ISO/BIN/IMG/NRG to CD/DVD/BD.', view: 'write' },
-  { src: '📁', tgt: '💿', title: 'Write files/folders to disc', desc: 'Build an image from files, then burn it.', view: 'writefiles' },
-  { src: '💿', tgt: '📄', title: 'Create image file from disc', desc: 'Read a disc into an .iso image (rip).', view: 'rip' },
-  { src: '📁', tgt: '📄', title: 'Create image file from files/folders', desc: 'Make an ISO9660 / Joliet / bootable image.', view: 'build' },
-  { src: '🔍', tgt: '💿', title: 'Verify disc', desc: 'Hash & compare an image/disc against a source.', view: 'verify' },
-  { src: '🔬', title: 'Discovery', desc: 'Detect drives, capabilities and inserted media.', view: 'discovery' }
+  { src: 'doc', tgt: 'discBurn', title: 'Write image file to disc', view: 'write' },
+  { src: 'folder', tgt: 'discBurn', title: 'Write files/folders to disc', view: 'writefiles' },
+  { src: 'disc', tgt: 'doc', title: 'Create image file from disc', view: 'rip' },
+  { src: 'folder', tgt: 'doc', title: 'Create image file from files/folders', view: 'build' },
+  { src: 'mag', tgt: 'disc', title: 'Verify disc', view: 'verify' },
+  { src: 'drive', title: 'Discovery', view: 'discovery' }
 ];
 
 function renderHome(): HTMLElement {
@@ -815,12 +828,12 @@ function renderHome(): HTMLElement {
       h(
         'div',
         { class: 'tile', onclick: () => showView(t.view) },
-        h('div', { class: 'tile-ico' }, t.src, t.tgt ? h('span', { class: 'arrow' }, '➜') : null, t.tgt ?? ''),
-        h('div', { class: 'tile-text' }, h('div', { class: 't' }, t.title), h('div', { class: 'd' }, t.desc))
+        h('div', { class: 'tile-ico' }, ico(t.src), t.tgt ? ico('arrow') : null, t.tgt ? ico(t.tgt) : null),
+        h('div', { class: 'tile-text' }, t.title)
       )
     );
   }
-  return h('div', {}, h('div', { class: 'launcher-head' }, 'What would you like to do?'), grid);
+  return h('div', { class: 'home' }, h('div', { class: 'launcher-head' }, 'What would you like to do?'), grid);
 }
 
 // --------------------------------------------------------------------------
@@ -1052,7 +1065,7 @@ async function init(): Promise<void> {
     const info = await api.appInfo();
     appVersion = info.version;
     appPlatform = `${info.platform}/${info.arch}`;
-    $('#title-text').textContent = `Iso Maker ${info.version}`;
+    $('#status-text').textContent = `Ready — Iso Maker ${info.version} (${appPlatform})`;
   } catch {
     /* ignore */
   }

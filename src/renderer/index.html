@@ -8,12 +8,6 @@
   </head>
   <body data-theme="light">
     <div id="app">
-      <!-- Classic title strip -->
-      <div id="titlebar">
-        <img id="title-logo" src="icon.png" alt="" width="20" height="20" />
-        <span id="title-text">Iso Maker</span>
-      </div>
-
       <!-- Menu bar (File / View / Mode / Tools / Help) -->
       <nav id="menubar"></nav>
 
@@ -31,7 +25,7 @@
             <span id="progress-speed" class="mono">0.00 MB/s</span>
             <span id="progress-eta" class="mono">ETA --:--</span>
             <span id="progress-buffer" class="mono">buffer --%</span>
-            <canvas id="speed-graph" width="320" height="44"></canvas>
+            <canvas id="speed-graph" width="320" height="40"></canvas>
           </div>
         </section>
       </main>
@@ -43,6 +37,8 @@
         </div>
         <div id="log-list"></div>
       </section>
+
+      <div id="statusbar"><span id="status-text">Ready</span></div>
     </div>
 
     <!-- Modal host (Settings / About) -->
