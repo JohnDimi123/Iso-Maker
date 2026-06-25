@@ -17,6 +17,9 @@ permissions:
 jobs:
   windows-installer:
     runs-on: windows-latest
+    env:
+      # 'true' only when a code-signing certificate secret is configured.
+      HAS_SIGNING: ${{ secrets.WINDOWS_CERT_BASE64 != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -34,16 +37,19 @@ jobs:
       - name: Run tests
         run: npm test
 
+      # Code signing is optional. When the WINDOWS_CERT_BASE64 secret is set, export the
+      # certificate to the environment so electron-builder signs automatically. When it is
+      # NOT set we must leave CSC_LINK unset entirely — an empty CSC_LINK makes
+      # electron-builder try to load "" as a cert path and fail the build.
+      - name: Configure Windows code signing (only if a cert secret is set)
+        if: env.HAS_SIGNING == 'true'
+        shell: bash
+        run: |
+          echo "CSC_LINK=${{ secrets.WINDOWS_CERT_BASE64 }}" >> "$GITHUB_ENV"
+          echo "CSC_KEY_PASSWORD=${{ secrets.WINDOWS_CERT_PASSWORD }}" >> "$GITHUB_ENV"
+
       - name: Build Windows setup (.exe)
         run: npx electron-builder --win nsis --x64 --publish never
-        env:
-          # Code signing (optional). Add these repo secrets to sign automatically:
-          #   WINDOWS_CERT_BASE64   = base64 of your code-signing .pfx
-          #   WINDOWS_CERT_PASSWORD = the .pfx password
-          # When unset, electron-builder produces an UNSIGNED build (current behaviour),
-          # which Windows SmartScreen warns about and Smart App Control blocks.
-          CSC_LINK: ${{ secrets.WINDOWS_CERT_BASE64 }}
-          CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
 
       - name: List build output
         shell: bash
