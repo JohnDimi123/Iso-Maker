@@ -10,11 +10,11 @@ let mainWindow: BrowserWindow | null = null;
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
-    width: 1280,
-    height: 840,
-    minWidth: 1024,
-    minHeight: 640,
-    backgroundColor: '#ece9d8',
+    width: 720,
+    height: 640,
+    minWidth: 640,
+    minHeight: 560,
+    backgroundColor: '#f0f0f0',
     title: APP_NAME,
     icon: join(__dirname, '../renderer/icon.png'),
     autoHideMenuBar: true,

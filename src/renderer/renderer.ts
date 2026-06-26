@@ -803,17 +803,18 @@ const allModes: Mode[] = [writeMode, writeFilesMode, ripMode, buildMode, verifyM
 // --------------------------------------------------------------------------
 // Launcher (home)
 // --------------------------------------------------------------------------
-// Classic-style inline icons (much closer to the ImgBurn look than emoji).
+// Detailed, glossy ImgBurn-style inline icons (no gradient ids, so repeated
+// inline copies don't collide).
 const ICONS: Record<string, string> = {
-  doc: `<svg width="36" height="36" viewBox="0 0 36 36"><path d="M7 2.5h14.5L29 10v23.5H7z" fill="#fff" stroke="#8a8a76"/><path d="M21.5 2.5V10H29" fill="#e6e6d8" stroke="#8a8a76"/><g stroke="#9fb0c2" stroke-width="1.4"><path d="M11 16h14M11 20h14M11 24h10"/></g></svg>`,
-  folder: `<svg width="36" height="36" viewBox="0 0 36 36"><path d="M3 8h11l3 3.5h16V30H3z" fill="#e7a93a" stroke="#a9781f"/><path d="M3 13.5h30V30H3z" fill="#ffd25e" stroke="#a9781f"/></svg>`,
-  disc: `<svg width="36" height="36" viewBox="0 0 36 36"><circle cx="18" cy="18" r="15.5" fill="#c9ced6" stroke="#828892"/><circle cx="18" cy="18" r="14.5" fill="none" stroke="#eef2f6"/><path d="M9 9a13 13 0 0 1 13-3" fill="none" stroke="#fff" stroke-width="2" opacity=".7"/><circle cx="18" cy="18" r="4.3" fill="#fff" stroke="#828892"/><circle cx="18" cy="18" r="1.5" fill="#c9ced6"/></svg>`,
-  mag: `<svg width="36" height="36" viewBox="0 0 36 36"><circle cx="15" cy="15" r="9.5" fill="#dcefff" stroke="#34679c" stroke-width="2.2"/><circle cx="15" cy="15" r="5.5" fill="#bfe0ff" opacity=".6"/><line x1="22" y1="22" x2="32" y2="32" stroke="#34679c" stroke-width="3.4" stroke-linecap="round"/></svg>`,
-  drive: `<svg width="36" height="36" viewBox="0 0 36 36"><rect x="3" y="9" width="30" height="17" rx="2" fill="#d9d9cc" stroke="#85857247"/><rect x="3" y="9" width="30" height="17" rx="2" fill="none" stroke="#85857a"/><rect x="6" y="13" width="15" height="3.4" rx="1" fill="#fff" stroke="#b6b6a6"/><circle cx="27.5" cy="17.5" r="2.4" fill="#79a544"/></svg>`,
-  arrow: `<svg width="22" height="22" viewBox="0 0 22 22"><path d="M2 9h10V4.5L20 11l-8 6.5V13H2z" fill="#2f6fd6" stroke="#1c4f9c"/></svg>`
+  doc: `<svg width="46" height="46" viewBox="0 0 48 48"><path d="M11 3.5h17l9 9v31a1 1 0 0 1-1 1H11a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1z" fill="#fff" stroke="#7f8794" stroke-width="1.2"/><path d="M28 3.5V12a1 1 0 0 0 1 1h8" fill="#e9eef3" stroke="#7f8794" stroke-width="1.2"/><g stroke="#c0c8d2" stroke-width="1.5" stroke-linecap="round"><path d="M15 17h13M15 21h13"/></g><circle cx="25" cy="32" r="9.2" fill="#c7ced7" stroke="#5f6b7a" stroke-width="1.1"/><path d="M17.5 29a9.2 9.2 0 0 1 11-3.4" fill="none" stroke="#8fd4ff" stroke-width="2" opacity=".6" stroke-linecap="round"/><circle cx="25" cy="32" r="2.6" fill="#eef3f8" stroke="#5f6b7a"/></svg>`,
+  folder: `<svg width="46" height="46" viewBox="0 0 48 48"><path d="M4 11h13l4 4h23v26a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z" fill="#e6a637" stroke="#9c6f1d" stroke-width="1.2"/><path d="M4 17.5h40V41a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z" fill="#ffd45f" stroke="#9c6f1d" stroke-width="1.2"/><path d="M5 18.5h38l-3 3H6z" fill="#fff0bf" opacity=".7"/></svg>`,
+  disc: `<svg width="46" height="46" viewBox="0 0 48 48"><circle cx="24" cy="24" r="21.5" fill="#c7ced7" stroke="#5f6b7a" stroke-width="1.2"/><circle cx="24" cy="24" r="21.5" fill="none" stroke="#f1f5f9" stroke-width="1" opacity=".5"/><path d="M6 18A21.5 21.5 0 0 1 31 6" fill="none" stroke="#8fd4ff" stroke-width="3.4" opacity=".5" stroke-linecap="round"/><path d="M6 23A21.5 21.5 0 0 1 25 6.4" fill="none" stroke="#c8a6ff" stroke-width="2.4" opacity=".45" stroke-linecap="round"/><path d="M41 30A21.5 21.5 0 0 1 23 42.4" fill="none" stroke="#ffd58c" stroke-width="2.6" opacity=".4" stroke-linecap="round"/><circle cx="24" cy="24" r="6.4" fill="#e7edf4" stroke="#5f6b7a"/><circle cx="24" cy="24" r="2.3" fill="#fbfdff" stroke="#5f6b7a"/></svg>`,
+  discBurn: `<svg width="46" height="46" viewBox="0 0 48 48"><circle cx="24" cy="24" r="21.5" fill="#dd5240" stroke="#8c2a20" stroke-width="1.2"/><circle cx="24" cy="24" r="21.5" fill="none" stroke="#ffdccb" stroke-width="1" opacity=".45"/><path d="M6 19A21.5 21.5 0 0 1 30 6.2" fill="none" stroke="#ffd070" stroke-width="3.2" opacity=".6" stroke-linecap="round"/><path d="M41 30A21.5 21.5 0 0 1 24 42.4" fill="none" stroke="#ff9a55" stroke-width="2.6" opacity=".5" stroke-linecap="round"/><circle cx="24" cy="24" r="6.4" fill="#f6d8ce" stroke="#8c2a20"/><circle cx="24" cy="24" r="2.3" fill="#fff" stroke="#8c2a20"/></svg>`,
+  mag: `<svg width="46" height="46" viewBox="0 0 48 48"><circle cx="20" cy="20" r="13" fill="#dff0ff" stroke="#2f6fb0" stroke-width="3"/><circle cx="20" cy="20" r="7.5" fill="#bfe0ff" opacity=".5"/><path d="M14 20a6 6 0 0 1 6-6" fill="none" stroke="#fff" stroke-width="2.2" opacity=".85" stroke-linecap="round"/><line x1="30" y1="30" x2="43" y2="43" stroke="#2f6fb0" stroke-width="5.5" stroke-linecap="round"/></svg>`,
+  drive: `<svg width="46" height="46" viewBox="0 0 48 48"><circle cx="20" cy="20" r="17" fill="#c7ced7" stroke="#5f6b7a" stroke-width="1.2"/><path d="M6 15A17 17 0 0 1 28 5.4" fill="none" stroke="#8fd4ff" stroke-width="2.6" opacity=".5" stroke-linecap="round"/><circle cx="20" cy="20" r="5" fill="#e7edf4" stroke="#5f6b7a"/><circle cx="20" cy="20" r="1.7" fill="#fff" stroke="#5f6b7a"/><rect x="27" y="27" width="16" height="15" rx="1.5" fill="#fff" stroke="#5f6b7a" stroke-width="1.1"/><rect x="30" y="34" width="2.6" height="5.5" fill="#3a9a3a"/><rect x="34" y="31" width="2.6" height="8.5" fill="#d8a200"/><rect x="38" y="33.5" width="2.6" height="6" fill="#c0392b"/></svg>`,
+  arrow: `<svg width="26" height="26" viewBox="0 0 28 28"><path d="M3 11h11V5.5l10 8.5L14 22.5V17H3z" fill="#e0392b" stroke="#7f1c14" stroke-width="1" stroke-linejoin="round"/><path d="M5 13h9" stroke="#ff9b8f" stroke-width="1.6" opacity=".7" stroke-linecap="round"/></svg>`
 };
 function ico(kind: string): HTMLElement {
-  if (kind === 'discBurn') return h('img', { src: 'icon.png', class: 'ic ic-disc', width: '36', height: '36', alt: '' });
   return h('span', { class: 'ic', html: ICONS[kind] ?? '' });
 }
 
@@ -844,7 +845,13 @@ function renderHome(): HTMLElement {
       )
     );
   }
-  return h('div', { class: 'home' }, h('div', { class: 'launcher-head' }, 'What would you like to do?'), grid);
+  return h(
+    'div',
+    { class: 'home' },
+    h('div', { class: 'launcher-head' }, 'What would you like to do?'),
+    grid,
+    h('div', { class: 'launcher-foot' }, 'For best results, use quality media (Verbatim / Taiyo Yuden).')
+  );
 }
 
 // --------------------------------------------------------------------------
