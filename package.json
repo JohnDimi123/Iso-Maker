@@ -1,6 +1,6 @@
 {
   "name": "iso-maker",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Iso Maker — a modern, open-source, ImgBurn-style optical disc imaging, burning, verification and diagnostics utility.",
   "author": "Iso Maker contributors",
   "license": "MIT",

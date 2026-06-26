@@ -14,6 +14,9 @@
 import type { DriveInfo, MediaInfo, MediaType } from '../../shared/types';
 import type { DriveBackend } from '../types';
 import { blankMedia, emptyCapabilities, familyOf, noMedia, tryExec, writeSpeedsFor } from '../util';
+import { logger } from '../../core/logger';
+
+const log = logger.child('hal:win32');
 
 interface CimDrive {
   Drive?: string;
@@ -35,6 +38,7 @@ interface ImapiDrive {
   mediaType?: number;
   totalSectors?: number;
   freeSectors?: number;
+  err?: string;
 }
 
 /** IMAPI_MEDIA_PHYSICAL_TYPE → our MediaType union. */
@@ -60,19 +64,21 @@ function mapMediaType(t: number): MediaType {
 }
 
 // PowerShell IMAPI2 probe: one JSON record per recorder with media details.
+// Captures the COM error message per recorder so detection problems are
+// diagnosable from the operation log.
 const IMAPI_PROBE = [
   '$ErrorActionPreference=\'SilentlyContinue\';$out=@();',
   'try{$m=New-Object -ComObject IMAPI2.MsftDiscMaster2;',
   'foreach($id in $m){$rec=$null;$drive=\'\';$vendor=\'\';$product=\'\';$rev=\'\';',
-  '$present=$false;$blank=$false;$mt=0;$total=0;$free=0;',
+  '$present=$false;$blank=$false;$mt=0;$total=0;$free=0;$err=\'\';',
   'try{$rec=New-Object -ComObject IMAPI2.MsftDiscRecorder2;$rec.InitializeDiscRecorder($id);',
   'if($rec.VolumePathNames.Count -gt 0){$drive=$rec.VolumePathNames[0]};',
-  '$vendor=$rec.VendorId;$product=$rec.ProductId;$rev=$rec.ProductRevision}catch{};',
+  '$vendor=$rec.VendorId;$product=$rec.ProductId;$rev=$rec.ProductRevision}catch{$err=\'rec:\'+$_.Exception.Message};',
   'try{$d=New-Object -ComObject IMAPI2.MsftDiscFormat2Data;$d.Recorder=$rec;',
   '$total=[int64]$d.TotalSectorsOnMedia;$free=[int64]$d.FreeSectorsOnMedia;',
   '$blank=[bool]$d.MediaPhysicallyBlank;$mt=[int]$d.CurrentPhysicalMediaType;',
-  '$present=($total -gt 0)}catch{$present=$false};',
-  '$out+=[pscustomobject]@{drive=$drive;vendor=$vendor;product=$product;rev=$rev;present=$present;blank=$blank;mediaType=$mt;totalSectors=$total;freeSectors=$free}}}catch{};',
+  '$present=($total -gt 0)}catch{$present=$false;$err=\'media:\'+$_.Exception.Message};',
+  '$out+=[pscustomobject]@{drive=$drive;vendor=$vendor;product=$product;rev=$rev;present=$present;blank=$blank;mediaType=$mt;totalSectors=$total;freeSectors=$free;err=$err}}}catch{$out=@()};',
   '$out|ConvertTo-Json -Compress'
 ].join('');
 
@@ -82,6 +88,7 @@ export class Win32Backend implements DriveBackend {
   async detectDrives(): Promise<DriveInfo[]> {
     const viaImapi = await this.detectViaImapi();
     if (viaImapi.length) return viaImapi;
+    log.warn('IMAPI2 probe yielded no drives — falling back to Win32_CDROMDrive (blank media may not be detected)');
     return this.detectViaWmi();
   }
 
@@ -91,14 +98,25 @@ export class Win32Backend implements DriveBackend {
       ['-NoProfile', '-NonInteractive', '-STA', '-Command', IMAPI_PROBE],
       12000
     );
-    if (!out) return [];
+    if (!out) {
+      log.warn('IMAPI2 probe produced no output (PowerShell/COM unavailable or timed out)');
+      return [];
+    }
     let data: ImapiDrive | ImapiDrive[];
     try {
       data = JSON.parse(out);
     } catch {
+      log.warn(`IMAPI2 probe output was not JSON: ${out.slice(0, 120)}`);
       return [];
     }
     const recs = Array.isArray(data) ? data : [data];
+    log.info(`IMAPI2: ${recs.length} recorder(s)`);
+    for (const r of recs) {
+      log.info(
+        `  ${r.drive || '?'} present=${!!r.present} blank=${!!r.blank} type=${r.mediaType ?? 0} ` +
+          `sectors=${r.totalSectors ?? 0}${r.err ? ` err=${r.err}` : ''}`
+      );
+    }
     return recs
       .filter((r) => r && (r.drive || r.product))
       .map((r, i) => {
